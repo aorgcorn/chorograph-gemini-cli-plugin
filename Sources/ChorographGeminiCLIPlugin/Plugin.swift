@@ -19,9 +19,7 @@ public final class GeminiCLIPlugin: ChorographPlugin, @unchecked Sendable {
 
     public func bootstrap(context: any PluginContextProviding) async throws {
         context.registerProvider(GeminiCLIProvider())
-        context.registerSettingsPanel(title: "Gemini CLI") {
-            GeminiCLISettingsView()
-        }
+        context.registerSettingsPanel(title: "Gemini CLI", AnyView(GeminiCLISettingsView()))
     }
 }
 
