@@ -22,6 +22,10 @@ let package = Package(
             name: "ChorographGeminiCLIPlugin",
             dependencies: [
                 .product(name: "ChorographPluginSDK", package: "chorograph-plugin-sdk"),
+            ],
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]),
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path"]),
             ]
         ),
     ]
