@@ -8,7 +8,7 @@ import SwiftUI
 public final class GeminiCLIPlugin: ChorographPlugin, @unchecked Sendable {
 
     public let manifest = PluginManifest(
-        id: "com.chorograph.gemini-cli",
+        id: "com.chorograph.plugin.gemini-cli",
         displayName: "Gemini CLI",
         description: "Drives the Gemini CLI subprocess and streams JSONL events.",
         version: "1.0.0",
@@ -25,8 +25,8 @@ public final class GeminiCLIPlugin: ChorographPlugin, @unchecked Sendable {
 
 // MARK: - C-ABI factory (required for dlopen-based loading)
 
-@_cdecl("chorographPluginFactory")
-public func chorographPluginFactory() -> UnsafeMutableRawPointer {
+@_cdecl("chorograph_plugin_create")
+public func chorographPluginCreate() -> UnsafeMutableRawPointer {
     let plugin = GeminiCLIPlugin()
     return Unmanaged.passRetained(plugin as AnyObject).toOpaque()
 }
