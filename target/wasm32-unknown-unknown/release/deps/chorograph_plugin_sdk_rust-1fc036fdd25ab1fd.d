@@ -1,0 +1,11 @@
+/Users/aavu/repositories/github.com/chorograph/chorograph-gemini-cli-plugin-rust/target/wasm32-unknown-unknown/release/deps/chorograph_plugin_sdk_rust-1fc036fdd25ab1fd.d: /Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/lib.rs /Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/ai.rs /Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/ffi.rs /Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/process.rs /Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/ui.rs
+
+/Users/aavu/repositories/github.com/chorograph/chorograph-gemini-cli-plugin-rust/target/wasm32-unknown-unknown/release/deps/libchorograph_plugin_sdk_rust-1fc036fdd25ab1fd.rlib: /Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/lib.rs /Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/ai.rs /Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/ffi.rs /Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/process.rs /Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/ui.rs
+
+/Users/aavu/repositories/github.com/chorograph/chorograph-gemini-cli-plugin-rust/target/wasm32-unknown-unknown/release/deps/libchorograph_plugin_sdk_rust-1fc036fdd25ab1fd.rmeta: /Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/lib.rs /Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/ai.rs /Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/ffi.rs /Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/process.rs /Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/ui.rs
+
+/Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/lib.rs:
+/Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/ai.rs:
+/Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/ffi.rs:
+/Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/process.rs:
+/Users/aavu/repositories/github.com/chorograph/chorograph-plugin-sdk-rust/src/ui.rs:
