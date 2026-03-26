@@ -12,16 +12,19 @@ impl GeminiCLI {
                 for skel in skeletons {
                     if let (Some(path), Some(symbols)) = (
                         skel.get("path").and_then(|p| p.as_str()),
-                        skel.get("symbols").and_then(|s| s.as_array())
+                        skel.get("symbols").and_then(|s| s.as_array()),
                     ) {
                         context.push_str(&format!("\nFile: `{}`\n", path));
                         for sym in symbols {
                             if let (Some(name), Some(kind), Some(line)) = (
                                 sym.get("name").and_then(|n| n.as_str()),
                                 sym.get("kind").and_then(|k| k.as_str()),
-                                sym.get("line").and_then(|l| l.as_u64())
+                                sym.get("line").and_then(|l| l.as_u64()),
                             ) {
-                                context.push_str(&format!("  - {} `{}` (line {})\n", kind, name, line));
+                                context.push_str(&format!(
+                                    "  - {} `{}` (line {})\n",
+                                    kind, name, line
+                                ));
                             }
                         }
                     }
@@ -33,16 +36,16 @@ impl GeminiCLI {
 
     fn run_gemini(&self, session_id: &str, prompt: &str, is_plan: bool) -> Result<()> {
         log!("[Gemini Plugin] Spawning gemini for session={}", session_id);
-        
+
         // Wrap in bash -lc to ensure shims and environment are active
         let child = ChildProcess::spawn(
             "bash",
             vec![
                 "-lc",
-                &format!("gemini --json \"{}\"", prompt.replace("\"", "\\\""))
+                &format!("gemini --json \"{}\"", prompt.replace("\"", "\\\"")),
             ],
             None,
-            std::collections::HashMap::new()
+            std::collections::HashMap::new(),
         )?;
 
         let mut buffer = Vec::new();
@@ -66,30 +69,45 @@ impl GeminiCLI {
                                 if let Some(item) = val.get("item") {
                                     let item_type = item.get("type").and_then(|t| t.as_str());
                                     if item_type == Some("agent_message") {
-                                        if let Some(msg) = item.get("text").and_then(|t| t.as_str()) {
-                                            if is_plan { full_response.push_str(msg); }
-                                            push_ai_event(session_id, &AIEvent::StreamingDelta {
-                                                session_id: session_id.to_string(),
-                                                text: msg.to_string(),
-                                            });
+                                        if let Some(msg) = item.get("text").and_then(|t| t.as_str())
+                                        {
+                                            if is_plan {
+                                                full_response.push_str(msg);
+                                            }
+                                            push_ai_event(
+                                                session_id,
+                                                &AIEvent::StreamingDelta {
+                                                    session_id: session_id.to_string(),
+                                                    text: msg.to_string(),
+                                                },
+                                            );
                                         }
                                     } else if item_type == Some("reasoning") {
-                                        if let Some(msg) = item.get("text").and_then(|t| t.as_str()) {
-                                            push_ai_event(session_id, &AIEvent::Reasoning {
-                                                session_id: session_id.to_string(),
-                                                text: msg.to_string(),
-                                            });
+                                        if let Some(msg) = item.get("text").and_then(|t| t.as_str())
+                                        {
+                                            push_ai_event(
+                                                session_id,
+                                                &AIEvent::Reasoning {
+                                                    session_id: session_id.to_string(),
+                                                    text: msg.to_string(),
+                                                },
+                                            );
                                         }
                                     }
                                 }
                             }
                         } else {
                             let text = String::from_utf8_lossy(&line).to_string();
-                            if is_plan { full_response.push_str(&text); }
-                            push_ai_event(session_id, &AIEvent::StreamingDelta {
-                                session_id: session_id.to_string(),
-                                text,
-                            });
+                            if is_plan {
+                                full_response.push_str(&text);
+                            }
+                            push_ai_event(
+                                session_id,
+                                &AIEvent::StreamingDelta {
+                                    session_id: session_id.to_string(),
+                                    text,
+                                },
+                            );
                         }
                     }
                 }
@@ -101,16 +119,22 @@ impl GeminiCLI {
         if is_plan {
             let files = self.extract_files(&full_response);
             if !files.is_empty() {
-                push_ai_event(session_id, &AIEvent::PlanGenerated {
-                    session_id: session_id.to_string(),
-                    files,
-                });
+                push_ai_event(
+                    session_id,
+                    &AIEvent::PlanGenerated {
+                        session_id: session_id.to_string(),
+                        files,
+                    },
+                );
             }
         }
 
-        push_ai_event(session_id, &AIEvent::TurnCompleted {
-            session_id: session_id.to_string(),
-        });
+        push_ai_event(
+            session_id,
+            &AIEvent::TurnCompleted {
+                session_id: session_id.to_string(),
+            },
+        );
 
         Ok(())
     }
@@ -141,16 +165,20 @@ pub fn init() {
 #[chorograph_plugin]
 pub fn handle_action(action_id: String, payload: serde_json::Value) {
     let provider = GeminiCLI;
-    log!("[Gemini Plugin] handle_action id={} payload={}", action_id, payload);
-    
+    log!(
+        "[Gemini Plugin] handle_action id={} payload={}",
+        action_id,
+        payload
+    );
+
     let context = provider.format_skeletons(&payload);
-    
+
     if let (Some(session_id), Some(prompt)) = (
         payload.get("session_id").and_then(|s| s.as_str()),
-        payload.get("prompt").and_then(|p| p.as_str())
+        payload.get("prompt").and_then(|p| p.as_str()),
     ) {
         let final_prompt = format!("{}{}", prompt, context);
-        
+
         if action_id == "plan" {
             let plan_prompt = format!(
                 "Analyze the task: {}. \n\n\
@@ -166,6 +194,29 @@ pub fn handle_action(action_id: String, payload: serde_json::Value) {
             let _ = provider.run_gemini(session_id, &plan_prompt, true);
         } else if action_id == "engage" {
             let _ = provider.run_gemini(session_id, &final_prompt, false);
+        }
+    }
+
+    // New conversation protocol: payload carries a `messages` array (no `prompt` field).
+    if action_id == "chat" || action_id == "reply" {
+        if let Some(session_id) = payload.get("session_id").and_then(|s| s.as_str()) {
+            let last_user_text = payload
+                .get("messages")
+                .and_then(|m| m.as_array())
+                .and_then(|msgs| {
+                    msgs.iter()
+                        .rev()
+                        .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
+                })
+                .and_then(|m| m.get("text").and_then(|t| t.as_str()))
+                .unwrap_or("");
+
+            if !last_user_text.is_empty() {
+                let final_prompt = format!("{}{}", last_user_text, context);
+                let _ = provider.run_gemini(session_id, &final_prompt, false);
+            } else {
+                log!("[Gemini Plugin] chat/reply: no user message found in payload");
+            }
         }
     }
 }
