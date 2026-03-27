@@ -70,7 +70,7 @@ impl GeminiCLI {
         log!("[Gemini Plugin] Spawning gemini for session={}", session_id);
 
         // Wrap in bash -lc to ensure shims and environment are active
-        let child = ChildProcess::spawn(
+        let child = match ChildProcess::spawn(
             "bash",
             vec![
                 "-lc",
@@ -78,7 +78,25 @@ impl GeminiCLI {
             ],
             None,
             std::collections::HashMap::new(),
-        )?;
+        ) {
+            Ok(c) => c,
+            Err(e) => {
+                log!("[Gemini Plugin] Failed to spawn gemini: {:?}", e);
+                push_ai_event(
+                    session_id,
+                    &AIEvent::Error {
+                        message: format!("Failed to spawn gemini: {:?}", e),
+                    },
+                );
+                push_ai_event(
+                    session_id,
+                    &AIEvent::TurnCompleted {
+                        session_id: session_id.to_string(),
+                    },
+                );
+                return Err(e);
+            }
+        };
 
         let mut buffer = Vec::new();
         let mut full_response = String::new();
