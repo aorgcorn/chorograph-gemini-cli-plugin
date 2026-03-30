@@ -266,27 +266,46 @@ pub fn handle_action(action_id: String, payload: serde_json::Value) {
 
     let context = provider.format_skeletons(&payload);
 
-    if let (Some(session_id), Some(prompt)) = (
-        payload.get("session_id").and_then(|s| s.as_str()),
-        payload.get("prompt").and_then(|p| p.as_str()),
-    ) {
-        let final_prompt = format!("{}{}", prompt, context);
+    // "plan" and "engage" use the same messages-array protocol as "chat"/"reply".
+    // The old flat "prompt" field is no longer sent by the host.
+    if action_id == "plan" || action_id == "engage" {
+        if let Some(session_id) = payload.get("session_id").and_then(|s| s.as_str()) {
+            let messages = payload
+                .get("messages")
+                .and_then(|m| m.as_array())
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
 
-        if action_id == "plan" {
-            let plan_prompt = format!(
-                "Analyze the task: {}. \n\n\
-                Respond in two clear parts:\n\
-                1. A detailed Markdown summary of your plan using headings (###), bullet points, and paragraphs.\n\
-                2. A single JSON array of ALL relevant relative file paths (both to read and to modify) at the very end.\n\n\
-                Example format:\n\
-                ### Summary\n\
-                I will analyze...\n\n\
-                [\"file1.swift\", \"file2.swift\"]", 
-                final_prompt
-            );
-            let _ = provider.run_gemini(session_id, &plan_prompt, true);
-        } else if action_id == "engage" {
-            let _ = provider.run_gemini(session_id, &final_prompt, false);
+            let last_user_text = messages
+                .iter()
+                .rev()
+                .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
+                .and_then(|m| m.get("text").and_then(|t| t.as_str()))
+                .unwrap_or("");
+
+            if !last_user_text.is_empty() {
+                let history = provider.format_history(messages);
+                let final_prompt = format!("{}{}{}", last_user_text, history, context);
+
+                if action_id == "plan" {
+                    let plan_prompt = format!(
+                        "Analyze the task: {}. \n\n\
+                        Respond in two clear parts:\n\
+                        1. A detailed Markdown summary of your plan using headings (###), bullet points, and paragraphs.\n\
+                        2. A single JSON array of ALL relevant relative file paths (both to read and to modify) at the very end.\n\n\
+                        Example format:\n\
+                        ### Summary\n\
+                        I will analyze...\n\n\
+                        [\"file1.swift\", \"file2.swift\"]",
+                        final_prompt
+                    );
+                    let _ = provider.run_gemini(session_id, &plan_prompt, true);
+                } else {
+                    let _ = provider.run_gemini(session_id, &final_prompt, false);
+                }
+            } else {
+                log!("[Gemini Plugin] plan/engage: no user message found in payload");
+            }
         }
     }
 
