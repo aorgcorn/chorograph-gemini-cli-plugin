@@ -66,7 +66,7 @@ impl GeminiCLI {
         context
     }
 
-    fn run_gemini(&self, session_id: &str, prompt: &str, is_plan: bool) -> Result<()> {
+    fn run_gemini(&self, session_id: &str, prompt: &str) -> Result<()> {
         log!("[Gemini Plugin] Spawning gemini for session={}", session_id);
 
         // Wrap in bash -lc to ensure shims and environment are active
@@ -99,7 +99,6 @@ impl GeminiCLI {
         };
 
         let mut buffer = Vec::new();
-        let mut full_response = String::new();
 
         while child.wait_for_data(60000) {
             if let Ok(ReadResult::Data(err_data)) = child.read(PipeType::Stderr) {
@@ -121,9 +120,6 @@ impl GeminiCLI {
                                     if item_type == Some("agent_message") {
                                         if let Some(msg) = item.get("text").and_then(|t| t.as_str())
                                         {
-                                            if is_plan {
-                                                full_response.push_str(msg);
-                                            }
                                             push_ai_event(
                                                 session_id,
                                                 &AIEvent::StreamingDelta {
@@ -144,10 +140,10 @@ impl GeminiCLI {
                                             );
                                         }
                                     } else if item_type == Some("file_change") {
-                                        // Gemini has written files to disk. Emit a ToolCall for
-                                        // the activity log. During the plan phase also emit a
-                                        // CrdtWrite so the host captures the content into the CRDT
-                                        // VFS as a speculative write for user approval/rejection.
+                                        // Gemini has written files to disk.  Emit a ToolCall for the
+                                        // activity log AND a CrdtWrite so the host captures the
+                                        // content into the CRDT VFS as a speculative write that the
+                                        // user can approve or reject from the canvas overlay card.
                                         if let Some(changes) =
                                             item.get("changes").and_then(|c| c.as_array())
                                         {
@@ -161,26 +157,24 @@ impl GeminiCLI {
                                                             name: format!("WRITE {}", path),
                                                         },
                                                     );
-                                                    if is_plan {
-                                                        match read_host_file(path) {
-                                                            Ok(content) => {
-                                                                push_ai_event(
-                                                                    session_id,
-                                                                    &AIEvent::CrdtWrite {
-                                                                        session_id: session_id
-                                                                            .to_string(),
-                                                                        path: path.to_string(),
-                                                                        content,
-                                                                    },
-                                                                );
-                                                            }
-                                                            Err(e) => {
-                                                                log!(
-                                                                    "[Gemini Plugin] Failed to read file {} for CrdtWrite: {:?}",
-                                                                    path,
-                                                                    e
-                                                                );
-                                                            }
+                                                    match read_host_file(path) {
+                                                        Ok(content) => {
+                                                            push_ai_event(
+                                                                session_id,
+                                                                &AIEvent::CrdtWrite {
+                                                                    session_id: session_id
+                                                                        .to_string(),
+                                                                    path: path.to_string(),
+                                                                    content,
+                                                                },
+                                                            );
+                                                        }
+                                                        Err(e) => {
+                                                            log!(
+                                                                "[Gemini Plugin] Failed to read file {} for CrdtWrite: {:?}",
+                                                                path,
+                                                                e
+                                                            );
                                                         }
                                                     }
                                                 }
@@ -191,9 +185,6 @@ impl GeminiCLI {
                             }
                         } else {
                             let text = String::from_utf8_lossy(&line).to_string();
-                            if is_plan {
-                                full_response.push_str(&text);
-                            }
                             push_ai_event(
                                 session_id,
                                 &AIEvent::StreamingDelta {
@@ -209,19 +200,6 @@ impl GeminiCLI {
             }
         }
 
-        if is_plan {
-            let files = self.extract_files(&full_response);
-            if !files.is_empty() {
-                push_ai_event(
-                    session_id,
-                    &AIEvent::PlanGenerated {
-                        session_id: session_id.to_string(),
-                        files,
-                    },
-                );
-            }
-        }
-
         push_ai_event(
             session_id,
             &AIEvent::TurnCompleted {
@@ -230,20 +208,6 @@ impl GeminiCLI {
         );
 
         Ok(())
-    }
-
-    fn extract_files(&self, response: &str) -> Vec<String> {
-        if let Some(last_start) = response.rfind('[') {
-            if let Some(last_end) = response.rfind(']') {
-                if last_end > last_start {
-                    let json_part = &response[last_start..=last_end];
-                    if let Ok(files) = serde_json::from_str::<Vec<String>>(json_part) {
-                        return files;
-                    }
-                }
-            }
-        }
-        Vec::new()
     }
 }
 
@@ -266,9 +230,10 @@ pub fn handle_action(action_id: String, payload: serde_json::Value) {
 
     let context = provider.format_skeletons(&payload);
 
-    // "plan" and "engage" use the same messages-array protocol as "chat"/"reply".
-    // The old flat "prompt" field is no longer sent by the host.
-    if action_id == "plan" || action_id == "engage" {
+    // All action variants (chat, reply, plan, engage) use the same messages-array protocol.
+    // Every turn is speculative: CrdtWrite events are always emitted so the host shows
+    // overlay cards on the canvas for user approval/discard.
+    if action_id == "chat" || action_id == "reply" || action_id == "plan" || action_id == "engage" {
         if let Some(session_id) = payload.get("session_id").and_then(|s| s.as_str()) {
             let messages = payload
                 .get("messages")
@@ -286,57 +251,12 @@ pub fn handle_action(action_id: String, payload: serde_json::Value) {
             if !last_user_text.is_empty() {
                 let history = provider.format_history(messages);
                 let final_prompt = format!("{}{}{}", last_user_text, history, context);
-
-                if action_id == "plan" {
-                    let plan_prompt = format!(
-                        "Analyze the task: {}. \n\n\
-                        Respond in two clear parts:\n\
-                        1. A detailed Markdown summary of your plan using headings (###), bullet points, and paragraphs.\n\
-                        2. A single JSON array of ALL relevant relative file paths (both to read and to modify) at the very end.\n\n\
-                        Example format:\n\
-                        ### Summary\n\
-                        I will analyze...\n\n\
-                        [\"file1.swift\", \"file2.swift\"]",
-                        final_prompt
-                    );
-                    let _ = provider.run_gemini(session_id, &plan_prompt, true);
-                } else {
-                    let _ = provider.run_gemini(session_id, &final_prompt, false);
-                }
+                let _ = provider.run_gemini(session_id, &final_prompt);
             } else {
-                log!("[Gemini Plugin] plan/engage: no user message found in payload");
-            }
-        }
-    }
-
-    // New conversation protocol: payload carries a `messages` array (no `prompt` field).
-    // For "reply" (follow-up turn) we prepend the full conversation history so the model
-    // has context of what was already said and done.
-    if action_id == "chat" || action_id == "reply" {
-        if let Some(session_id) = payload.get("session_id").and_then(|s| s.as_str()) {
-            let messages = payload
-                .get("messages")
-                .and_then(|m| m.as_array())
-                .map(|v| v.as_slice())
-                .unwrap_or(&[]);
-
-            let last_user_text = messages
-                .iter()
-                .rev()
-                .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
-                .and_then(|m| m.get("text").and_then(|t| t.as_str()))
-                .unwrap_or("");
-
-            if !last_user_text.is_empty() {
-                let history = if action_id == "reply" {
-                    provider.format_history(messages)
-                } else {
-                    String::new()
-                };
-                let final_prompt = format!("{}{}{}", last_user_text, history, context);
-                let _ = provider.run_gemini(session_id, &final_prompt, false);
-            } else {
-                log!("[Gemini Plugin] chat/reply: no user message found in payload");
+                log!(
+                    "[Gemini Plugin] {}: no user message found in payload",
+                    action_id
+                );
             }
         }
     }
