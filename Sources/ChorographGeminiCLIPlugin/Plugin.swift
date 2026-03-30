@@ -11,7 +11,7 @@ public final class GeminiCLIPlugin: ChorographPlugin, @unchecked Sendable {
         id: "com.chorograph.plugin.gemini-cli",
         displayName: "Gemini CLI",
         description: "Drives the Gemini CLI subprocess and streams JSONL events.",
-        version: "1.1.3",
+        version: "1.1.4",
         capabilities: [.aiProvider, .settingsPanel]
     )
 
