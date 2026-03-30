@@ -143,6 +143,49 @@ impl GeminiCLI {
                                                 },
                                             );
                                         }
+                                    } else if item_type == Some("file_change") {
+                                        // Gemini has written files to disk. Emit a ToolCall for
+                                        // the activity log. During the plan phase also emit a
+                                        // CrdtWrite so the host captures the content into the CRDT
+                                        // VFS as a speculative write for user approval/rejection.
+                                        if let Some(changes) =
+                                            item.get("changes").and_then(|c| c.as_array())
+                                        {
+                                            for change in changes {
+                                                if let Some(path) =
+                                                    change.get("path").and_then(|p| p.as_str())
+                                                {
+                                                    push_ai_event(
+                                                        session_id,
+                                                        &AIEvent::ToolCall {
+                                                            name: format!("WRITE {}", path),
+                                                        },
+                                                    );
+                                                    if is_plan {
+                                                        match read_host_file(path) {
+                                                            Ok(content) => {
+                                                                push_ai_event(
+                                                                    session_id,
+                                                                    &AIEvent::CrdtWrite {
+                                                                        session_id: session_id
+                                                                            .to_string(),
+                                                                        path: path.to_string(),
+                                                                        content,
+                                                                    },
+                                                                );
+                                                            }
+                                                            Err(e) => {
+                                                                log!(
+                                                                    "[Gemini Plugin] Failed to read file {} for CrdtWrite: {:?}",
+                                                                    path,
+                                                                    e
+                                                                );
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
